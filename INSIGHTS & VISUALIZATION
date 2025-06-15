@@ -1,0 +1,73 @@
+# --- HEALTH ANALYSIS MODEL: PART 2 - INSIGHTS & VISUALIZATION ---
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def generate_full_analysis(df):
+    """
+    Generates a full health analysis report and visualization dashboard
+    based on the complete and corrected dataset.
+    """
+    print("\n\n🏥 COMPREHENSIVE HEALTH ANALYSIS REPORT (Full 3-Month Data)")
+    print("==========================================================")
+    
+    # --- Key Health Metrics from the Full Dataset ---
+    rest_data = df[df['Is_Exercise'] == 0]
+    exercise_data = df[df['Is_Exercise'] == 1]
+    
+    print("\n📊 KEY HEALTH METRICS:")
+    print(f"  • Average Resting HR: {rest_data['HR_Value'].mean():.1f} bpm")
+    if not exercise_data.empty:
+        print(f"  • Average Exercise HR: {exercise_data['HR_Value'].mean():.1f} bpm")
+    print(f"  • Lowest Recorded HR (Sleep/Rest): {df[df['Hour'].between(1, 5)]['HR_Value'].min():.0f} bpm")
+    print(f"  • Highest Recorded HR (Exercise): {df['HR_Value'].max():.0f} bpm")
+    print(f"  • Overall Heart Rate Variability (Std Dev): {df['HR_Value'].std():.1f} bpm")
+
+    # --- Health Risk Assessment ---
+    print("\n🚨 HEALTH RISK ASSESSMENT:")
+    
+    # Analyze each risk category found in the data
+    risk_counts = df['Health_Risk'].value_counts()
+    for risk, count in risk_counts.items():
+        if "Bradycardia" in risk or "Tachycardia" in risk or "Extreme" in risk:
+            print(f"  • {risk}: {count} episodes detected.")
+
+    # --- Visualization Dashboard ---
+    print("\n\n🖼️ GENERATING VISUALIZATION DASHBOARD...")
+    sns.set(style="whitegrid")
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16))
+    fig.suptitle('Full 3-Month Heart Rate Analysis Dashboard for Jaynil', fontsize=24, fontweight='bold')
+
+    # 1. Overall Heart Rate Distribution
+    sns.histplot(data=df, x='HR_Value', hue='Is_Exercise', kde=True, ax=axes[0, 0], palette=['skyblue', 'salmon'])
+    axes[0, 0].set_title('Heart Rate Distribution (Rest vs. Exercise)', fontsize=16, fontweight='bold')
+    
+    # 2. Health Risk Category Breakdown
+    risk_order = ['Severe Bradycardia (<50)', 'Bradycardia (50-59)', 'Normal Resting (60-100)', 'Tachycardia (101-120)', 'Severe Tachycardia (>120)', 'Exercise', 'Extreme Exercise Risk']
+    risk_counts = df['Health_Risk'].value_counts().reindex(risk_order).dropna()
+    sns.barplot(x=risk_counts.values, y=risk_counts.index, ax=axes[0, 1], palette='coolwarm_r')
+    axes[0, 1].set_title('Health Risk Category Breakdown', fontsize=16, fontweight='bold')
+    axes[0, 1].set_xlabel('Number of Readings')
+
+    # 3. 24-Hour Heart Rate Pattern (Circadian Rhythm)
+    hourly_avg = df.groupby('Hour')['HR_Value'].mean()
+    hourly_avg.plot(kind='line', ax=axes[1, 0], marker='o', color='purple', lw=3)
+    axes[1, 0].set_title('Your 24-Hour Heart Rate Pattern', fontsize=16, fontweight='bold')
+    axes[1, 0].set_xlabel('Hour of the Day')
+    axes[1, 0].set_ylabel('Average Heart Rate (bpm)')
+    axes[1, 0].set_xticks(range(0, 24, 2))
+
+    # 4. Timeline of All Readings with Extreme Events
+    axes[1, 1].plot(df['DateTime'], df['HR_Value'], color='gray', alpha=0.3, label='All Readings')
+    extreme_events = df[df['Health_Risk'].str.contains('Severe|Extreme')]
+    if not extreme_events.empty:
+        sns.scatterplot(data=extreme_events, x='DateTime', y='HR_Value', hue='Health_Risk', s=100, ax=axes[1, 1], zorder=5)
+    axes[1, 1].set_title('Timeline of All Readings & Extreme Events', fontsize=16, fontweight='bold')
+    axes[1, 1].legend(title='Extreme Event Type')
+    axes[1, 1].tick_params(axis='x', rotation=30)
+    
+    plt.tight_layout(rect=[0, 0.03, 1, 0.96])
+    plt.show()
+
+# Run the full analysis and visualization on the correctly processed data
+generate_full_analysis(processed_df)
