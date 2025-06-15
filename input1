@@ -1,0 +1,96 @@
+# --- HEALTH ANALYSIS MODEL: PART 1 - CORRECTED & OPTIMIZED DATA PROCESSING ---
+
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from dateutil import parser
+import warnings
+warnings.filterwarnings('ignore')
+
+# This allows you to upload your file directly in Google Colab
+from google.colab import files
+uploaded = files.upload()
+
+def process_large_heart_rate_dataset_corrected(file_path):
+    """
+    This is the CORRECTED and optimized data processing model. It is now robust
+    enough to handle the special colon character and all date formats in your file.
+    """
+    print("🔄 Processing your large heart rate dataset with the corrected model...")
+
+    # Use openpyxl engine, which is best for .xlsx files
+    df = pd.read_excel(file_path, sheet_name='Table 1', header=3, engine='openpyxl')
+
+    # --- FIX 1: Handle Special Colon Character ---
+    # The original model failed here. This line replaces '∶' with ':'
+    df['Time'] = df['Time'].astype(str).str.replace('∶', ':', regex=False)
+
+    # Efficiently parse heart rate, handling number ranges (e.g., "77-117")
+    def parse_heart_rate(hr):
+        if pd.isnull(hr): return np.nan
+        hr_str = str(hr)
+        if '-' in hr_str:
+            try:
+                parts = [float(p.strip()) for p in hr_str.split('-') if p.strip().replace('.', '', 1).isdigit()]
+                return np.mean(parts) if parts else np.nan
+            except ValueError: return np.nan
+        try:
+            return float(hr_str)
+        except ValueError: return np.nan
+    df['HR_Value'] = df['Heart rate (bpm)'].apply(parse_heart_rate)
+
+    # --- FIX 2: Robust Date Parsing ---
+    # The original model failed here. This logic now correctly adds the year 2025.
+    def parse_date_robust(d):
+        if pd.isnull(d): return None
+        d_str = str(d)
+        if 'Yesterday' in d_str:
+            return pd.Timestamp('2025-06-15') - pd.Timedelta(days=1)
+        try:
+            # Add the year '2025' to handle formats like "15 Jun"
+            return pd.to_datetime(d_str + ' 2025', format='%d %b %Y', errors='coerce')
+        except Exception:
+            return pd.to_datetime(d_str, errors='coerce')
+    df['Parsed_Date'] = df['Date'].apply(parse_date_robust)
+
+    # Parse time (this now works because of the colon fix)
+    def parse_time(t):
+        if pd.isnull(t): return np.nan
+        t_str = str(t).split('-')[0].strip()
+        try:
+            return parser.parse(t_str).time()
+        except (parser.ParserError, TypeError): return np.nan
+    df['Parsed_Time'] = df['Time'].apply(parse_time)
+
+    # Combine into a single DateTime column
+    df['DateTime'] = pd.to_datetime(df['Parsed_Date'].astype(str) + ' ' + df['Parsed_Time'].astype(str), errors='coerce')
+
+    # Clean up and sort the data
+    df = df.dropna(subset=['HR_Value', 'DateTime']).sort_values('DateTime').reset_index(drop=True)
+
+    # --- Feature Engineering & Health Risk Model ---
+    df['Is_Exercise'] = df['Tag'].fillna('').str.contains('Exercising', case=False).astype(int)
+    df['Is_High_HR_Event'] = df['Tag'].fillna('').str.contains('High heart rate', case=False).astype(int)
+    df['Hour'] = df['DateTime'].dt.hour
+    df['Day_Name'] = df['DateTime'].dt.day_name()
+
+    def categorize_health_risk(hr, is_exercise):
+        if is_exercise:
+            if hr > 180: return 'Extreme Exercise Risk'
+            else: return 'Exercise'
+        else: # Resting state
+            if hr < 50: return 'Severe Bradycardia (<50)'
+            elif hr < 60: return 'Bradycardia (50-59)'
+            elif hr > 120: return 'Severe Tachycardia (>120)'
+            elif hr > 100: return 'Tachycardia (101-120)'
+            else: return 'Normal Resting (60-100)'
+    df['Health_Risk'] = df.apply(lambda row: categorize_health_risk(row['HR_Value'], row['Is_Exercise']), axis=1)
+
+    print(f"\n✅ CORRECTED model run complete. {len(df)} valid records analyzed.")
+    print(f"   • Date Range: {df['DateTime'].min().date()} to {df['DateTime'].max().date()}")
+    print(f"   • Heart Rate Range: {df['HR_Value'].min():.0f} bpm to {df['HR_Value'].max():.0f} bpm")
+    return df
+
+# Run the corrected data processing model on your uploaded file
+filename = next(iter(uploaded))
+processed_df = process_large_heart_rate_dataset_corrected(filename)
